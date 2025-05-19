@@ -35,6 +35,18 @@ struct MixTapeView: View {
     @State private var showingSimilarMixtapes = false
     @State private var selectedMoodTags: [String] = []
     
+    // Placeholder images for different moods
+    private let moodImages: [Mood: String] = [
+        .energetic: "mood-energetic",
+        .relaxed: "mood-relaxed",
+        .happy: "mood-happy",
+        .melancholic: "mood-melancholic",
+        .focused: "mood-focused",
+        .romantic: "mood-romantic",
+        .angry: "mood-angry",
+        .neutral: "mood-neutral"
+    ]
+    
     var body: some View {
         VStack(spacing: 0) {
             // Mood tag badges at the top
@@ -69,6 +81,27 @@ struct MixTapeView: View {
                 }
                 .background(Color.gray.opacity(0.05))
             }
+            
+            // Mixtape Cover Image
+            coverImage
+                .frame(height: 200)
+                .cornerRadius(12)
+                .shadow(radius: 5)
+            
+            // Mixtape Info
+            VStack(alignment: .leading, spacing: 8) {
+                Text(mixTape.wrappedTitle)
+                    .font(.title)
+                    .bold()
+                
+                Text("Created \(mixTape.createdDate.formatted())")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                moodLabel
+                    .padding(.vertical, 4)
+            }
+            .padding()
             
             // Song list
             List { 
@@ -180,6 +213,37 @@ struct MixTapeView: View {
         }
     }
     
+    // MARK: - Cover Image
+    
+    private var coverImage: some View {
+        Group {
+            if let image = getCoverImage() {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                // Use mood-based placeholder
+                Image(moodImages[Mood(rawValue: mixTape.wrappedMood) ?? .neutral] ?? "mood-neutral")
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            }
+        }
+    }
+    
+    private var moodLabel: some View {
+        HStack {
+            Image(systemName: moodIcon)
+                .foregroundColor(moodColor)
+            Text(mixTape.wrappedMood.capitalized)
+                .font(.subheadline)
+                .foregroundColor(moodColor)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(moodColor.opacity(0.1))
+        .cornerRadius(8)
+    }
+    
     // MARK: - Helper Functions
     
     /// Action sheet for smart reordering options
@@ -231,15 +295,7 @@ struct MixTapeView: View {
     
     /// Play a specific song from the mixtape
     private func playSong(_ song: Song) {
-        if self.currentMixTapeName != self.mixTape.wrappedTitle {
-            self.currentMixTapeName = self.mixTape.wrappedTitle
-            self.currentMixTapeImage = self.mixTape.wrappedUrl
-        }
-        
-        let newPlayerItems = createArrayOfPlayerItems(songs: self.songs)
-        if self.currentPlayerItems.items != newPlayerItems {
-            self.currentPlayerItems.items = newPlayerItems
-        }
+        guard let url = song.url else { return }
         
         // Different behavior based on selection and current state
         if song == self.songs[0] && self.currentSongName.name == "Not Playing" {
@@ -674,5 +730,33 @@ struct SimilarMixtapesView: View {
         
         // Cap at 1.0
         return min(score, 1.0)
+    }
+    
+    // MARK: - Mood Styling
+    
+    private var moodColor: Color {
+        switch Mood(rawValue: mixTape.wrappedMood) ?? .neutral {
+        case .energetic: return .red
+        case .relaxed: return .blue
+        case .happy: return .yellow
+        case .melancholic: return .purple
+        case .focused: return .green
+        case .romantic: return .pink
+        case .angry: return .orange
+        case .neutral: return .gray
+        }
+    }
+    
+    private var moodIcon: String {
+        switch Mood(rawValue: mixTape.wrappedMood) ?? .neutral {
+        case .energetic: return "bolt.fill"
+        case .relaxed: return "cloud.fill"
+        case .happy: return "sun.max.fill"
+        case .melancholic: return "moon.fill"
+        case .focused: return "target"
+        case .romantic: return "heart.fill"
+        case .angry: return "flame.fill"
+        case .neutral: return "circle.fill"
+        }
     }
 }

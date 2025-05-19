@@ -18,10 +18,18 @@ class AudioProcessor: ObservableObject {
     private let inputNode: AVAudioInputNode
     private let fftProcessor: FFTProcessor
     
-    // Buffers and processing
+    // Performance optimization
+    private let bufferPool: AudioBufferPool
+    private let analysisQueue = DispatchQueue(label: "com.mixtapes.analysis", qos: .userInitiated)
+    private let featureExtractionQueue = DispatchQueue(label: "com.mixtapes.features", qos: .userInitiated)
+    private let moodClassificationQueue = DispatchQueue(label: "com.mixtapes.mood", qos: .userInitiated)
+    private var workItems: Set<DispatchWorkItem> = []
+    private let workItemsLock = NSLock()
+    
+    // Buffer and processing settings
     private let bufferSize: Int = 4096
     private let sampleRate: Float = 44100.0
-    private var processingQueue = DispatchQueue(label: "AudioProcessing", qos: .userInitiated)
+    private let maxBuffers = 8
     
     // Feature extraction and analysis
     @Published var currentFeatures: AudioFeatures?
@@ -30,30 +38,68 @@ class AudioProcessor: ObservableObject {
     
     // CoreML mood classification model
     private var moodClassifier: MLModel?
-    
-    // Callback for real-time features
-    private var onFeaturesUpdate: ((AudioFeatures) -> Void)?
+    private var modelQueue = DispatchQueue(label: "com.mixtapes.mlmodel", qos: .userInitiated)
     
     // Analysis state
     private var featureHistory: [AudioFeatures] = []
     private let maxHistorySize = 10
+    private let historyLock = NSLock()
     
     init() {
         // Initialize audio components
         self.inputNode = audioEngine.inputNode
         self.fftProcessor = FFTProcessor(bufferSize: bufferSize, sampleRate: sampleRate)
         
-        // Setup audio session
-        setupAudioSession()
+        // Initialize buffer pool
+        self.bufferPool = AudioBufferPool(
+            maxBuffers: maxBuffers,
+            bufferSize: bufferSize,
+            format: inputNode.outputFormat(forBus: 0)
+        )
         
-        // Load CoreML model
+        // Setup audio session and load model
+        setupAudioSession()
         loadMoodClassificationModel()
     }
     
     deinit {
         stopRealTimeAnalysis()
+        cancelAllWorkItems()
+        bufferPool.drain()
     }
     
+    // MARK: - Work Item Management
+    
+    private func addWorkItem(_ item: DispatchWorkItem) {
+        workItemsLock.lock()
+        workItems.insert(item)
+        workItemsLock.unlock()
+    }
+    
+    private func removeWorkItem(_ item: DispatchWorkItem) {
+        workItemsLock.lock()
+        workItems.remove(item)
+        workItemsLock.unlock()
+    }
+    
+    private func cancelAllWorkItems() {
+        workItemsLock.lock()
+        workItems.forEach { $0.cancel() }
+        workItems.removeAll()
+        workItemsLock.unlock()
+    }
+    
+    // MARK: - Feature History Management
+    
+    private func addFeatureToHistory(_ feature: AudioFeatures) {
+        historyLock.lock()
+        featureHistory.append(feature)
+        if featureHistory.count > maxHistorySize {
+            featureHistory.removeFirst()
+        }
+        historyLock.unlock()
+    }
+
     // MARK: - Audio Session Setup
     
     private func setupAudioSession() {
@@ -90,57 +136,76 @@ class AudioProcessor: ObservableObject {
     
     /// Start real-time audio analysis with FFT processing
     func startRealTimeAnalysis(onFeaturesUpdate: @escaping (AudioFeatures) -> Void) {
-        self.onFeaturesUpdate = onFeaturesUpdate
+        guard !audioEngine.isRunning else { return }
         
-        guard !audioEngine.isRunning else {
-            print("AudioProcessor - Already analyzing")
-            return
-        }
-        
-        // Configure input node for processing
         let inputFormat = inputNode.outputFormat(forBus: 0)
-        print("AudioProcessor - Input format: \(inputFormat)")
+        let analysisFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: Double(sampleRate),
+            channels: 1,
+            interleaved: false
+        )!
         
-        // Install tap for real-time processing
-        inputNode.installTap(onBus: 0, 
-                           bufferSize: AVAudioFrameCount(bufferSize), 
-                           format: inputFormat) { [weak self] (buffer, time) in
-            self?.processAudioBuffer(buffer)
-        }
-        
-        // Start audio engine
-        do {
-            try audioEngine.start()
-            DispatchQueue.main.async {
-                self.isAnalyzing = true
+        // Install tap on background queue to avoid blocking
+        analysisQueue.async { [weak self] in
+            guard let self = self else { return }
+            
+            self.inputNode.installTap(onBus: 0, bufferSize: AVAudioFrameCount(self.bufferSize),
+                                    format: inputFormat) { [weak self] buffer, time in
+                guard let self = self else { return }
+                
+                // Get recycled buffer from pool
+                guard let processBuffer = self.bufferPool.obtainBuffer() else { return }
+                
+                // Copy input to process buffer
+                buffer.copy(to: processBuffer)
+                
+                // Process on background queue
+                let workItem = DispatchWorkItem { [weak self] in
+                    guard let self = self else { return }
+                    
+                    // Extract features
+                    self.featureExtractionQueue.async {
+                        let features = self.fftProcessor.extractFeatures(from: processBuffer)
+                        
+                        // Return buffer to pool
+                        self.bufferPool.returnBuffer(processBuffer)
+                        
+                        // Update features on main queue
+                        DispatchQueue.main.async {
+                            self.currentFeatures = features
+                            onFeaturesUpdate(features)
+                        }
+                        
+                        // Classify mood on separate queue
+                        self.classifyMood(for: features)
+                    }
+                }
+                
+                self.addWorkItem(workItem)
+                self.analysisQueue.async(execute: workItem)
             }
-            print("AudioProcessor - Started real-time analysis")
-        } catch {
-            print("AudioProcessor - Failed to start audio engine: \(error)")
+            
+            // Start engine
+            do {
+                try self.audioEngine.start()
+                DispatchQueue.main.async {
+                    self.isAnalyzing = true
+                }
+            } catch {
+                print("AudioProcessor - Failed to start engine: \(error)")
+            }
         }
     }
     
     /// Stop real-time audio analysis
     func stopRealTimeAnalysis() {
-        guard audioEngine.isRunning else { return }
-        
-        // Remove tap and stop engine
-        inputNode.removeTap(onBus: 0)
         audioEngine.stop()
+        inputNode.removeTap(onBus: 0)
+        cancelAllWorkItems()
         
         DispatchQueue.main.async {
             self.isAnalyzing = false
-        }
-        
-        print("AudioProcessor - Stopped real-time analysis")
-    }
-    
-    /// Toggle real-time analysis on/off
-    func toggleRealTimeAnalysis(onFeaturesUpdate: @escaping (AudioFeatures) -> Void) {
-        if isAnalyzing {
-            stopRealTimeAnalysis()
-        } else {
-            startRealTimeAnalysis(onFeaturesUpdate: onFeaturesUpdate)
         }
     }
     

@@ -22,40 +22,61 @@ struct AudioVisualizationView: View {
     
     var body: some View {
         VStack(spacing: 20) {
-            // Error banner if needed
-            if let error = currentError {
-                ErrorBanner(error: error) {
-                    retryAction?()
-                }
-            }
-            
-            // Waveform visualization
-            VStack(alignment: .leading) {
-                Text("Waveform")
-                    .font(.headline)
+            // Current song visualization
+            ZStack {
+                // Frequency visualization
+                FrequencyVisualizer(audioData: audioProcessor.currentFeatures?.spectralData ?? [])
+                    .frame(height: 200)
                 
-                if isAnalyzing {
-                    waveformView
-                } else {
-                    placeholderView
+                // Mood overlay
+                if let features = audioProcessor.currentFeatures {
+                    MoodIndicatorOverlay(
+                        mood: aiService.moodEngine.currentMood,
+                        confidence: aiService.moodEngine.moodConfidence,
+                        energy: features.energy,
+                        tempo: features.tempo
+                    )
                 }
             }
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(Color(UIColor.systemBackground))
+                    .shadow(radius: 10)
+            )
             
-            // Frequency spectrum
-            VStack(alignment: .leading) {
-                Text("Frequency Spectrum")
-                    .font(.headline)
+            // Audio features with mood context
+            VStack(spacing: 16) {
+                AudioFeatureRow(
+                    title: "Energy",
+                    value: audioProcessor.currentFeatures?.energy ?? 0,
+                    icon: "bolt.fill",
+                    color: aiService.moodEngine.currentMood.color
+                )
                 
-                if isAnalyzing {
-                    spectrumView
-                } else {
-                    placeholderView
-                }
+                AudioFeatureRow(
+                    title: "Tempo",
+                    value: audioProcessor.currentFeatures?.tempo ?? 0,
+                    icon: "metronome",
+                    color: aiService.moodEngine.currentMood.color
+                )
+                
+                AudioFeatureRow(
+                    title: "Mood Confidence",
+                    value: aiService.moodEngine.moodConfidence,
+                    icon: aiService.moodEngine.currentMood.systemIcon,
+                    color: aiService.moodEngine.currentMood.color
+                )
             }
+            .padding()
             
-            // Audio features
-            if let features = currentFeatures {
-                audioFeaturesView(features)
+            // Live mood transitions
+            if isAnalyzing {
+                MoodTransitionView(
+                    currentMood: aiService.moodEngine.currentMood,
+                    previousMood: aiService.moodEngine.previousMood,
+                    transition: aiService.moodEngine.moodTransition
+                )
+                .transition(.move(edge: .bottom))
             }
         }
         .padding()
@@ -220,5 +241,332 @@ struct AudioVisualizationView: View {
         isAnalyzing = false
         currentError = error as? AppError ?? .audioProcessingFailed(error)
         retryAction = startAnalysis
+    }
+}
+
+struct FrequencyVisualizer: View {
+    let audioData: [Float]
+    @State private var phase: CGFloat = 0
+    
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            Canvas { context, size in
+                // Draw frequency bars
+                let barWidth = size.width / CGFloat(audioData.count)
+                let maxAmplitude = audioData.max() ?? 1.0
+                
+                for (index, amplitude) in audioData.enumerated() {
+                    let normalizedAmplitude = CGFloat(amplitude / maxAmplitude)
+                    let x = CGFloat(index) * barWidth
+                    let height = size.height * normalizedAmplitude
+                    
+                    let bar = Path(CGRect(
+                        x: x,
+                        y: size.height - height,
+                        width: barWidth * 0.8,
+                        height: height
+                    ))
+                    
+                    context.fill(
+                        bar,
+                        with: .linearGradient(
+                            Gradient(colors: [.blue, .purple]),
+                            startPoint: CGPoint(x: 0, y: size.height),
+                            endPoint: CGPoint(x: 0, y: 0)
+                        )
+                    )
+                }
+                
+                // Add glow effect
+                context.addFilter(.blur(radius: 5))
+            }
+        }
+    }
+}
+
+struct MoodIndicatorOverlay: View {
+    let mood: Mood
+    let confidence: Double
+    let energy: Float
+    let tempo: Float
+    @State private var isAnimating = false
+    @State private var pulseScale: CGFloat = 1
+    
+    var body: some View {
+        ZStack {
+            // Dynamic mood aura with pulsing animation
+            Circle()
+                .fill(mood.color.opacity(0.15))
+                .scaleEffect(pulseScale)
+                .animation(
+                    Animation.easeInOut(duration: 1.5)
+                        .repeatForever(autoreverses: true),
+                    value: pulseScale
+                )
+            
+            VStack(spacing: 8) {
+                // Mood icon with dynamic animations
+                Image(systemName: mood.systemIcon)
+                    .font(.system(size: 32, weight: .medium))
+                    .foregroundColor(mood.color)
+                    .symbolEffect(.bounce, options: .repeating)
+                    .scaleEffect(isAnimating ? 1.1 : 1.0)
+                    .animation(
+                        Animation.easeInOut(duration: 1)
+                            .repeatForever(autoreverses: true),
+                        value: isAnimating
+                    )
+                
+                // Mood label with gradient
+                Text(mood.rawValue.capitalized)
+                    .font(.headline)
+                    .foregroundColor(mood.color)
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 12)
+                    .background(
+                        Capsule()
+                            .fill(mood.color.opacity(0.1))
+                    )
+                
+                // Feature indicators with dynamic styling
+                HStack(spacing: 16) {
+                    FeatureIndicator(
+                        value: Double(energy),
+                        icon: "bolt.fill",
+                        label: "Energy",
+                        color: mood.color
+                    )
+                    
+                    FeatureIndicator(
+                        value: Double(tempo) / 180.0,
+                        icon: "metronome",
+                        label: "Tempo",
+                        color: mood.color
+                    )
+                }
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color(UIColor.systemBackground).opacity(0.95))
+                    .shadow(
+                        color: mood.color.opacity(0.3),
+                        radius: 10,
+                        x: 0,
+                        y: 4
+                    )
+            )
+        }
+        .onAppear {
+            isAnimating = true
+            pulseScale = 1.2
+        }
+    }
+}
+
+struct FeatureIndicator: View {
+    let value: Double
+    let icon: String
+    let label: String
+    let color: Color
+    
+    var body: some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .foregroundColor(color)
+                Text(label)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    // Background track
+                    Capsule()
+                        .fill(Color.gray.opacity(0.15))
+                        .frame(height: 6)
+                    
+                    // Value indicator with gradient
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    color.opacity(0.7),
+                                    color
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: geometry.size.width * value)
+                        .frame(height: 6)
+                }
+            }
+            .frame(height: 6)
+            
+            // Percentage indicator
+            Text("\(Int(value * 100))%")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+    }
+}
+
+struct AudioFeatureRow: View {
+    let title: String
+    let value: Double
+    let icon: String
+    let color: Color
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .foregroundColor(color)
+            
+            Text(title)
+                .foregroundColor(.primary)
+            
+            Spacer()
+            
+            // Value bar
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.gray.opacity(0.2))
+                    
+                    Capsule()
+                        .fill(color)
+                        .frame(width: geometry.size.width * value)
+                }
+            }
+            .frame(height: 8)
+            .frame(width: 100)
+            
+            // Percentage
+            Text("\(Int(value * 100))%")
+                .foregroundColor(.secondary)
+                .frame(width: 40, alignment: .trailing)
+        }
+    }
+}
+
+struct MoodTransitionView: View {
+    let currentMood: Mood
+    let previousMood: Mood
+    let transition: Double
+    @State private var progress: CGFloat = 0
+    @State private var isAnimating = false
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Text("Mood Transition")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                Spacer()
+                
+                Text("\(Int(transition * 100))%")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+            
+            HStack(spacing: 24) {
+                // Previous mood indicator
+                VStack(spacing: 4) {
+                    ZStack {
+                        Circle()
+                            .fill(previousMood.color.opacity(0.2))
+                            .frame(width: 44, height: 44)
+                        
+                        Image(systemName: previousMood.systemIcon)
+                            .font(.system(size: 20))
+                            .foregroundColor(previousMood.color)
+                            .opacity(1 - progress)
+                    }
+                    
+                    Text(previousMood.rawValue.capitalized)
+                        .font(.caption)
+                        .foregroundColor(previousMood.color)
+                        .opacity(1 - progress)
+                }
+                
+                // Transition bar
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        // Background track
+                        Capsule()
+                            .fill(Color.gray.opacity(0.15))
+                        
+                        // Transition indicator with dynamic gradient
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        previousMood.color,
+                                        currentMood.color
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(width: geometry.size.width * progress)
+                            .overlay(
+                                // Transition pulse effect
+                                Circle()
+                                    .fill(Color.white)
+                                    .frame(width: 12, height: 12)
+                                    .offset(x: geometry.size.width * progress - 6)
+                                    .shadow(color: currentMood.color.opacity(0.5), radius: 4)
+                            )
+                    }
+                }
+                .frame(height: 8)
+                .animation(.spring(response: 0.6), value: progress)
+                
+                // Current mood indicator
+                VStack(spacing: 4) {
+                    ZStack {
+                        Circle()
+                            .fill(currentMood.color.opacity(0.2))
+                            .frame(width: 44, height: 44)
+                        
+                        Image(systemName: currentMood.systemIcon)
+                            .font(.system(size: 20))
+                            .foregroundColor(currentMood.color)
+                            .opacity(progress)
+                            .scaleEffect(isAnimating ? 1.1 : 1.0)
+                    }
+                    
+                    Text(currentMood.rawValue.capitalized)
+                        .font(.caption)
+                        .foregroundColor(currentMood.color)
+                        .opacity(progress)
+                }
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(UIColor.systemBackground))
+                .shadow(
+                    color: Color.black.opacity(0.1),
+                    radius: 8,
+                    x: 0,
+                    y: 4
+                )
+        )
+        .onAppear {
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                progress = CGFloat(transition)
+            }
+            
+            withAnimation(
+                .easeInOut(duration: 1.0)
+                .repeatForever(autoreverses: true)
+            ) {
+                isAnimating = true
+            }
+        }
     }
 }

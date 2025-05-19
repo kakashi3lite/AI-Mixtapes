@@ -11,6 +11,15 @@ import CoreData
 import AVKit
 
 struct ContentView: View {
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @StateObject private var errorHandler = ErrorHandler.shared
+    
+    // View state
+    @State private var isLoading = true
+    @State private var loadingMessage = "Loading..."
+    @State private var loadingProgress = 0.0
+    @State private var showingSplash = true
+    
     // Core environment and state
     @Environment(\.managedObjectContext) var moc
     @FetchRequest(entity: MixTape.entity(), sortDescriptors: [
@@ -38,6 +47,19 @@ struct ContentView: View {
     @ObservedObject var aiService: AIIntegrationService
     
     var body: some View {
+        Group {
+            if !hasCompletedOnboarding {
+                OnboardingView()
+            } else if showingSplash {
+                SplashScreen(isShowing: $showingSplash)
+            } else {
+                mainContent
+            }
+        }
+        .handleErrors(with: errorHandler)
+    }
+    
+    private var mainContent: some View {
         ZStack {
             VStack(spacing: 0) {
                 // AI insights banner at the top
@@ -901,4 +923,43 @@ struct PlayerView: View {
 extension MixTapeView {
     // Add AI service to MixTapeView
     var aiService: AIIntegrationService? { nil }
+}
+
+struct SplashScreen: View {
+    @Binding var isShowing: Bool
+    @State private var scale = 0.7
+    @State private var opacity = 0.0
+    
+    var body: some View {
+        ZStack {
+            Color(UIColor.systemBackground)
+                .ignoresSafeArea()
+            
+            VStack(spacing: 20) {
+                Image("LaunchScreen")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 120, height: 120)
+                
+                Text("AI Mixtapes")
+                    .font(.title)
+                    .bold()
+            }
+            .scaleEffect(scale)
+            .opacity(opacity)
+        }
+        .onAppear {
+            withAnimation(.spring()) {
+                scale = 1.0
+                opacity = 1.0
+            }
+            
+            // Dismiss after animation
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                withAnimation {
+                    isShowing = false
+                }
+            }
+        }
+    }
 }

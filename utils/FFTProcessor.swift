@@ -5,24 +5,21 @@ import AVFoundation
 /// Utility class for performing FFT analysis on audio data
 class FFTProcessor {
     // FFT configuration
-    private let fftSetup: vDSP_DFT_Setup
+    private let fftSetup: vDSP_DFT_Setup?
     private let bufferSize: Int
-    private let log2n: vDSP_Length
     private let sampleRate: Float
-    private let nyquistFrequency: Float
+    
+    // Reusable buffers for FFT processing
+    private let window: [Float]
+    private var reusableBuffer: [Float]
+    private var reusableImaginary: [Float]
+    private var reusableMagnitudes: [Float]
+    private let bufferLock = NSLock()
     
     // Frequency bands for analysis
     private let bassRange: ClosedRange<Float> = 20...250
     private let midRange: ClosedRange<Float> = 250...2000
     private let trebleRange: ClosedRange<Float> = 2000...8000
-    
-    // Working buffers
-    private var window: [Float]
-    private var fftInput: [Float]
-    private var fftOutput: DSPSplitComplex
-    private var magnitudes: [Float]
-    private var phases: [Float]
-    private var frequencies: [Float]
     
     // Analysis state
     private var lastMagnitudes: [Float]?
@@ -32,67 +29,68 @@ class FFTProcessor {
     init(bufferSize: Int, sampleRate: Float) {
         self.bufferSize = bufferSize
         self.sampleRate = sampleRate
-        self.nyquistFrequency = sampleRate / 2.0
-        self.log2n = vDSP_Length(log2(Float(bufferSize)))
         
-        // Initialize working buffers
-        self.window = [Float](repeating: 0, count: bufferSize)
-        self.fftInput = [Float](repeating: 0, count: bufferSize)
-        self.magnitudes = [Float](repeating: 0, count: bufferSize / 2)
-        self.phases = [Float](repeating: 0, count: bufferSize / 2)
-        self.frequencies = [Float](repeating: 0, count: bufferSize / 2)
+        // Create Hanning window for better frequency response
+        self.window = vDSP.window(ofType: Float.self,
+                                usingSequence: .hannNormalized,
+                                count: bufferSize,
+                                isHalfWindow: false)
         
-        // Initialize split complex buffer for FFT output
-        let realp = UnsafeMutablePointer<Float>.allocate(capacity: bufferSize / 2)
-        let imagp = UnsafeMutablePointer<Float>.allocate(capacity: bufferSize / 2)
-        self.fftOutput = DSPSplitComplex(realp: realp, imagp: imagp)
+        // Initialize reusable buffers
+        self.reusableBuffer = Array(repeating: 0, count: bufferSize)
+        self.reusableImaginary = Array(repeating: 0, count: bufferSize)
+        self.reusableMagnitudes = Array(repeating: 0, count: bufferSize)
         
         // Create FFT setup
-        guard let setup = vDSP_DFT_zop_CreateSetup(
+        self.fftSetup = vDSP_DFT_zop_CreateSetup(
             nil,
             vDSP_Length(bufferSize),
-            vDSP_DFT_Direction.FORWARD
-        ) else {
-            fatalError("Failed to create FFT setup")
-        }
-        self.fftSetup = setup
-        
-        // Initialize window function
-        createHannWindow()
-        initializeFrequencyArray()
+            .FORWARD
+        )
     }
     
     deinit {
-        // Clean up allocated memory
-        fftOutput.realp.deallocate()
-        fftOutput.imagp.deallocate()
-        vDSP_DFT_DestroySetup(fftSetup)
+        if let setup = fftSetup {
+            vDSP_DFT_DestroySetup(setup)
+        }
     }
     
     /// Process audio buffer and extract spectral features
     func processBuffer(_ buffer: AVAudioPCMBuffer) -> SpectralFeatures? {
-        guard let channelData = buffer.floatChannelData,
-              buffer.frameLength == bufferSize else { return nil }
+        bufferLock.lock()
+        defer { bufferLock.unlock() }
         
-        // Apply window function to input data
-        vDSP_vmul(channelData[0], 1, window, 1, &fftInput, 1, vDSP_Length(bufferSize))
-        
-        // Perform forward FFT
-        fftInput.withUnsafeBytes { ptr in
-            let typePtr = ptr.bindMemory(to: DSPComplex.self)
-            vDSP_ctoz(typePtr.baseAddress!, 2, &fftOutput, 1, vDSP_Length(bufferSize / 2))
+        // Get audio data
+        guard let channelData = buffer.floatChannelData?[0] else {
+            return nil
         }
-        vDSP_fft_zrip(fftSetup, &fftOutput, 1, log2n, FFTDirection(FFT_FORWARD))
+        
+        // Copy samples to reusable buffer and apply window
+        vDSP.multiply(channelData,
+                     window,
+                     result: &reusableBuffer)
+        
+        // Perform FFT
+        vDSP_DFT_Execute(
+            fftSetup!,
+            reusableBuffer,
+            reusableImaginary,
+            &reusableBuffer,
+            &reusableImaginary
+        )
         
         // Calculate magnitude spectrum
-        vDSP_zvmags(&fftOutput, 1, &magnitudes, 1, vDSP_Length(bufferSize / 2))
+        vDSP.absolute(
+            DSPSplitComplex(
+                realp: &reusableBuffer,
+                imagp: &reusableImaginary
+            ),
+            result: &reusableMagnitudes
+        )
         
-        // Calculate phase spectrum
-        vDSP_zvphas(&fftOutput, 1, &phases, 1, vDSP_Length(bufferSize / 2))
-        
-        // Extract spectral features
-        let spectralCentroid = calculateSpectralCentroid()
-        let spectralRolloff = calculateSpectralRolloff()
+        // Extract features
+        let spectralCentroid = calculateSpectralCentroid(magnitudes: reusableMagnitudes)
+        let spectralRolloff = calculateSpectralRolloff(magnitudes: reusableMagnitudes)
         let spectralFlux = calculateSpectralFlux()
         let spectralContrast = calculateSpectralContrast()
         
@@ -105,7 +103,7 @@ class FFTProcessor {
         let (estimatedTempo, beatStrength) = estimateTempoAndBeatStrength()
         
         // Store current magnitudes for next flux calculation
-        lastMagnitudes = magnitudes
+        lastMagnitudes = reusableMagnitudes
         
         return SpectralFeatures(
             spectralCentroid: spectralCentroid,
@@ -124,19 +122,22 @@ class FFTProcessor {
     
     // MARK: - Feature Calculation Methods
     
-    private func calculateSpectralCentroid() -> Float {
+    private func calculateSpectralCentroid(magnitudes: [Float]) -> Float {
+        let frequencies = (0..<bufferSize).map { Float($0) * sampleRate / Float(bufferSize) }
         var weightedSum: Float = 0
-        var sum: Float = 0
+        var magnitudeSum: Float = 0
         
-        for i in 0..<bufferSize/2 {
-            weightedSum += frequencies[i] * magnitudes[i]
-            sum += magnitudes[i]
-        }
+        vDSP.multiply(frequencies,
+                     magnitudes,
+                     result: &reusableBuffer)
         
-        return sum > 0 ? weightedSum / sum : 0
+        weightedSum = vDSP.sum(reusableBuffer)
+        magnitudeSum = vDSP.sum(magnitudes)
+        
+        return magnitudeSum > 0 ? weightedSum / magnitudeSum : 0
     }
     
-    private func calculateSpectralRolloff(percentage: Float = 0.85) -> Float {
+    private func calculateSpectralRolloff(magnitudes: [Float], percentage: Float = 0.85) -> Float {
         let totalEnergy = magnitudes.reduce(0, +)
         let threshold = totalEnergy * percentage
         var accumulator: Float = 0
@@ -155,7 +156,7 @@ class FFTProcessor {
         
         var flux: Float = 0
         for i in 0..<bufferSize/2 {
-            let diff = magnitudes[i] - lastMags[i]
+            let diff = reusableMagnitudes[i] - lastMags[i]
             flux += diff * diff
         }
         return sqrt(flux)
@@ -165,7 +166,7 @@ class FFTProcessor {
         let valleyBins = 5
         let peakBins = 5
         
-        let sortedMagnitudes = magnitudes.sorted()
+        let sortedMagnitudes = reusableMagnitudes.sorted()
         let valleys = sortedMagnitudes[..<valleyBins].reduce(0, +) / Float(valleyBins)
         let peaks = sortedMagnitudes[(bufferSize/2 - peakBins)...].reduce(0, +) / Float(peakBins)
         
@@ -186,7 +187,7 @@ class FFTProcessor {
     }
     
     private func calculateDynamicRange() -> Float {
-        let sortedMagnitudes = magnitudes.sorted()
+        let sortedMagnitudes = reusableMagnitudes.sorted()
         let p90 = sortedMagnitudes[Int(Float(bufferSize/2) * 0.9)]
         let p10 = sortedMagnitudes[Int(Float(bufferSize/2) * 0.1)]
         return p90 - p10
@@ -229,18 +230,6 @@ class FFTProcessor {
         let beatStrength = 1.0 / (1.0 + variance)  // Normalize to 0-1 range
         
         return (tempo, beatStrength)
-    }
-    
-    // MARK: - Initialization Helpers
-    
-    private func createHannWindow() {
-        vDSP_hann_window(&window, vDSP_Length(bufferSize), Int32(vDSP_HANN_NORM))
-    }
-    
-    private func initializeFrequencyArray() {
-        for i in 0..<bufferSize/2 {
-            frequencies[i] = Float(i) * sampleRate / Float(bufferSize)
-        }
     }
 }
 

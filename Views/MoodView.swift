@@ -11,178 +11,225 @@ import SwiftUI
 /// View for selecting and displaying the current mood
 struct MoodView: View {
     @ObservedObject var moodEngine: MoodEngine
-    @Environment(\.presentationMode) var presentationMode
-    @State private var selectedMood: Mood = .neutral
+    @Environment(\.dismiss) var dismiss
+    
+    @State private var selectedMood: Mood?
+    @State private var isAnalyzing = false
+    @State private var showingTutorial = false
     
     var body: some View {
         NavigationView {
-            VStack(spacing: 20) {
-                // Current mood indicator
-                VStack {
-                    Text("Your Current Mood")
-                        .font(.headline)
-                        .padding(.top)
-                    
-                    ZStack {
-                        Circle()
-                            .fill(moodEngine.currentMood.color.opacity(0.2))
-                            .frame(width: 120, height: 120)
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Current mood visualization
+                    VStack(spacing: 16) {
+                        Text("Current Mood")
+                            .font(.title2)
+                            .bold()
                         
-                        VStack {
-                            Image(systemName: moodEngine.currentMood.systemIcon)
-                                .font(.system(size: 40))
-                                .foregroundColor(moodEngine.currentMood.color)
-                            
-                            Text(moodEngine.currentMood.rawValue)
-                                .font(.headline)
-                                .foregroundColor(moodEngine.currentMood.color)
-                                .padding(.top, 4)
-                        }
-                    }
-                    
-                    // Confidence indicator
-                    HStack {
-                        Text("Confidence:")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        
-                        GeometryReader { geometry in
-                            ZStack(alignment: .leading) {
-                                Rectangle()
-                                    .fill(Color.gray.opacity(0.2))
-                                    .frame(height: 8)
-                                    .cornerRadius(4)
-                                
-                                Rectangle()
-                                    .fill(moodEngine.currentMood.color)
-                                    .frame(width: CGFloat(moodEngine.moodConfidence) * geometry.size.width, height: 8)
-                                    .cornerRadius(4)
-                            }
-                        }
-                        .frame(height: 8)
-                        .padding(.leading, 8)
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 4)
-                }
-                .padding()
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color.white))
-                .shadow(radius: 2)
-                .padding(.horizontal)
-                
-                // Mood selection grid
-                Text("Select a Different Mood")
-                    .font(.headline)
-                    .padding(.top)
-                
-                LazyVGrid(columns: [
-                    GridItem(.flexible()),
-                    GridItem(.flexible()),
-                    GridItem(.flexible()),
-                    GridItem(.flexible())
-                ], spacing: 16) {
-                    ForEach(Mood.allCases, id: \.self) { mood in
-                        MoodSelectionButton(
-                            mood: mood,
-                            isSelected: selectedMood == mood,
-                            action: {
-                                selectedMood = mood
-                            }
+                        MoodVisualizerView(
+                            mood: moodEngine.currentMood,
+                            confidence: moodEngine.moodConfidence
                         )
+                        .frame(height: 200)
+                        
+                        // Mood description
+                        Text(moodEngine.currentMood.description)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
                     }
-                }
-                .padding(.horizontal)
-                
-                // Apply button
-                Button(action: {
-                    moodEngine.setMood(selectedMood, confidence: 0.9)
-                    presentationMode.wrappedValue.dismiss()
-                }) {
-                    Text("Apply Mood")
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(selectedMood.color)
-                        .cornerRadius(10)
-                        .padding(.horizontal)
-                }
-                .disabled(selectedMood == moodEngine.currentMood)
-                .padding(.top)
-                
-                // Mood explanation
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("About \(selectedMood.rawValue) Music")
-                        .font(.headline)
+                    .padding()
                     
-                    Text(getMoodDescription(selectedMood))
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+                    // Mood analysis status
+                    if isAnalyzing {
+                        AIProcessingView(
+                            title: "Analyzing Audio",
+                            subtitle: "Detecting musical characteristics and emotional patterns",
+                            insights: [
+                                "Analyzing tempo and rhythm...",
+                                "Processing harmonic content...",
+                                "Detecting emotional patterns...",
+                                "Calculating mood probabilities...",
+                                "Finalizing mood analysis..."
+                            ]
+                        )
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                    
+                    // Mood selection grid
+                    LazyVGrid(columns: [
+                        GridItem(.flexible()),
+                        GridItem(.flexible())
+                    ], spacing: 16) {
+                        ForEach(Mood.allCases, id: \.self) { mood in
+                            MoodSelectionCard(
+                                mood: mood,
+                                isSelected: selectedMood == mood,
+                                confidence: moodEngine.confidenceFor(mood: mood)
+                            )
+                            .onTapGesture {
+                                withAnimation(.spring()) {
+                                    selectedMood = mood
+                                    updateMood(to: mood)
+                                }
+                            }
+                        }
+                    }
+                    .padding()
                 }
-                .padding()
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color.white))
-                .shadow(radius: 2)
-                .padding(.horizontal)
-                .padding(.top, 8)
-                
-                Spacer()
             }
-            .padding(.vertical)
-            .navigationBarTitle("Your Mood", displayMode: .inline)
-            .navigationBarItems(trailing: Button("Done") {
-                presentationMode.wrappedValue.dismiss()
-            })
-            .onAppear {
-                selectedMood = moodEngine.currentMood
+            .navigationBarTitle("Mood Detection", displayMode: .inline)
+            .navigationBarItems(
+                leading: Button("Tutorial") {
+                    showingTutorial = true
+                },
+                trailing: Button("Done") {
+                    dismiss()
+                }
+            )
+            .sheet(isPresented: $showingTutorial) {
+                MoodTutorialView()
             }
         }
     }
     
-    private func getMoodDescription(_ mood: Mood) -> String {
-        switch mood {
-        case .energetic:
-            return "Energetic music features high tempos, strong beats, and dynamic elements that can boost your energy levels and motivation. Perfect for workouts, parties, or starting your day with enthusiasm."
-        case .relaxed:
-            return "Relaxed music has slower tempos, gentle transitions, and soothing sounds that help reduce stress and promote calm. Ideal for unwinding after a busy day or creating a peaceful atmosphere."
-        case .happy:
-            return "Happy music often uses major keys, upbeat rhythms, and bright tones to evoke feelings of joy and optimism. Great for lifting your spirits or celebrating positive moments."
-        case .melancholic:
-            return "Melancholic music embraces emotional depth through minor keys and expressive melodies. It can help process feelings, inspire reflection, or provide comfort during contemplative moments."
-        case .focused:
-            return "Focused music balances stimulation and calm with consistent patterns and minimal distractions. Designed to enhance concentration and productivity during work or study sessions."
-        case .romantic:
-            return "Romantic music expresses feelings of love and connection through emotional melodies and intimate arrangements. Perfect for special moments, date nights, or setting a warm atmosphere."
-        case .angry:
-            return "Intense music characterized by powerful dynamics, complex patterns, and cathartic expression. Can help channel and process strong emotions or fuel high-intensity physical activities."
-        case .neutral:
-            return "Balanced music that works in various contexts without strongly evoking specific emotions. Versatile for everyday listening when you want a pleasant soundtrack without mood manipulation."
+    private func updateMood(to mood: Mood) {
+        withAnimation {
+            isAnalyzing = true
+        }
+        
+        // Simulate mood analysis
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            withAnimation {
+                moodEngine.setMood(mood, confidence: Double.random(in: 0.7...0.95))
+                isAnalyzing = false
+            }
         }
     }
 }
 
-/// Button for selecting a mood
-struct MoodSelectionButton: View {
+struct MoodSelectionCard: View {
     let mood: Mood
     let isSelected: Bool
-    let action: () -> Void
+    let confidence: Double
     
     var body: some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                ZStack {
-                    Circle()
-                        .fill(isSelected ? mood.color : mood.color.opacity(0.2))
-                        .frame(width: 60, height: 60)
+        VStack(spacing: 12) {
+            // Mood icon
+            Image(systemName: mood.systemIcon)
+                .font(.system(size: 32))
+                .foregroundColor(isSelected ? .white : mood.color)
+            
+            // Mood name
+            Text(mood.rawValue.capitalized)
+                .font(.headline)
+                .foregroundColor(isSelected ? .white : .primary)
+            
+            // Confidence bar
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(height: 4)
                     
-                    Image(systemName: mood.systemIcon)
-                        .font(.system(size: 24))
-                        .foregroundColor(isSelected ? .white : mood.color)
+                    Capsule()
+                        .fill(isSelected ? .white : mood.color)
+                        .frame(width: geometry.size.width * confidence)
+                        .frame(height: 4)
                 }
-                
-                Text(mood.rawValue)
-                    .font(.caption)
-                    .foregroundColor(isSelected ? mood.color : .primary)
             }
+            .frame(height: 4)
+            
+            // Confidence percentage
+            Text("\(Int(confidence * 100))%")
+                .font(.caption)
+                .foregroundColor(isSelected ? .white.opacity(0.8) : .secondary)
         }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(isSelected ? mood.color : Color(UIColor.systemBackground))
+                .shadow(color: mood.color.opacity(isSelected ? 0.5 : 0.2),
+                       radius: isSelected ? 10 : 5)
+        )
+        .scaleEffect(isSelected ? 1.05 : 1.0)
+        .animation(.spring(), value: isSelected)
+    }
+}
+
+struct MoodTutorialView: View {
+    @Environment(\.dismiss) var dismiss
+    
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Tutorial sections
+                    TutorialSection(
+                        title: "Real-time Mood Detection",
+                        description: "Our AI analyzes audio in real-time to detect the emotional characteristics of your music.",
+                        imageName: "waveform.path"
+                    )
+                    
+                    TutorialSection(
+                        title: "Multiple Features",
+                        description: "We analyze tempo, harmony, rhythm, and many other musical features to determine mood.",
+                        imageName: "music.note.list"
+                    )
+                    
+                    TutorialSection(
+                        title: "Confidence Levels",
+                        description: "See how confident our AI is about each mood detection, ensuring accuracy and transparency.",
+                        imageName: "gauge.medium"
+                    )
+                    
+                    TutorialSection(
+                        title: "Personalized Learning",
+                        description: "The more you use the app, the better it gets at understanding your musical preferences.",
+                        imageName: "person.fill.checkmark"
+                    )
+                    
+                    Button("Got it!") {
+                        dismiss()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .padding(.top)
+                }
+                .padding()
+            }
+            .navigationBarTitle("How Mood Detection Works", displayMode: .inline)
+            .navigationBarItems(trailing: Button("Close") {
+                dismiss()
+            })
+        }
+    }
+}
+
+struct TutorialSection: View {
+    let title: String
+    let description: String
+    let imageName: String
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: imageName)
+                .font(.system(size: 44))
+                .foregroundColor(.accentColor)
+            
+            Text(title)
+                .font(.headline)
+            
+            Text(description)
+                .font(.body)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(UIColor.secondarySystemBackground))
+        )
     }
 }

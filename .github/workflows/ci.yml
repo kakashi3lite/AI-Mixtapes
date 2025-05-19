@@ -1,0 +1,80 @@
+name: AI-Mixtapes CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Test iOS App
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        destination:
+          - "platform=iOS Simulator,name=iPhone 15 Pro,OS=17.0"
+          - "platform=iOS Simulator,name=iPhone 14 Pro,OS=16.4"
+          - "platform=iOS Simulator,name=iPhone 13 Pro,OS=15.5"
+
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '15.0'
+      
+      - name: Install Dependencies
+        run: |
+          gem install bundler
+          bundle install
+
+      - name: Set up Ruby for Fastlane
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+          
+      - name: Run Tests
+        env:
+          destination: ${{ matrix.destination }}
+        run: |
+          xcodebuild test \
+            -project AI-Mixtapes.xcodeproj \
+            -scheme AI-Mixtapes \
+            -destination "${destination}" \
+            -enableCodeCoverage YES \
+            -resultBundlePath TestResults.xcresult
+
+      - name: Upload Code Coverage
+        uses: codecov/codecov-action@v4
+        with:
+          xcode: true
+          xcode_derived_data: ./DerivedData
+          fail_ci_if_error: true
+          flags: unittests
+          token: ${{ secrets.CODECOV_TOKEN }}
+          
+  deploy:
+    name: Deploy to TestFlight
+    needs: test
+    runs-on: macos-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Ruby for Fastlane
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+          
+      - name: Deploy to TestFlight
+        env:
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD: ${{ secrets.FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD }}
+          APPSTORE_CONNECT_API_KEY_ID: ${{ secrets.APPSTORE_CONNECT_API_KEY_ID }}
+          APPSTORE_CONNECT_API_KEY_CONTENT: ${{ secrets.APPSTORE_CONNECT_API_KEY_CONTENT }}
+        run: bundle exec fastlane beta

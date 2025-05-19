@@ -1,0 +1,5 @@
+app_identifier("com.swanand.AIMixtapes") # The bundle identifier of your app
+apple_id("dev@swanand.co") # Your Apple Developer Portal username
+
+team_id("XXXXXXXXXX") # Developer Portal Team ID
+itc_team_id("XXXXXXXXXX") # App Store Connect Team ID

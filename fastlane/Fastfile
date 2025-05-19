@@ -1,0 +1,37 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Run unit tests"
+  lane :tests do
+    run_tests(
+      project: "AI-Mixtapes.xcodeproj",
+      scheme: "AI-Mixtapes",
+      code_coverage: true,
+      devices: ["iPhone 15 Pro"]
+    )
+  end
+
+  desc "Build and upload to TestFlight"
+  lane :beta do
+    setup_ci if is_ci
+
+    # Sync certificates and provisioning profiles
+    sync_code_signing(
+      type: "appstore",
+      readonly: true
+    )
+
+    # Build the app
+    build_ios_app(
+      scheme: "AI-Mixtapes",
+      export_method: "app-store",
+      xcargs: "-allowProvisioningUpdates"
+    )
+
+    # Upload to TestFlight
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true,
+      apple_id: ENV["APPSTORE_CONNECT_API_KEY_ID"]
+    )
+  end
+end

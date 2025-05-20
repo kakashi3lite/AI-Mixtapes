@@ -32,5 +32,19 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
+	<!-- AI-related permissions -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>AI-Mixtapes can use facial expression analysis to detect your mood and tailor music recommendations (optional).</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>AI-Mixtapes can recognize voice commands for hands-free control of your music experience.</string>
+	<key>NSSiriUsageDescription</key>
+	<string>Use Siri to control AI-Mixtapes with voice commands for creating mood-based playlists and analyzing music.</string>
+	<!-- Intents Extension -->
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>INPlayMediaIntent</string>
+		<string>INSearchForMediaIntent</string>
+		<string>INAddMediaIntent</string>
+	</array>
 </dict>
 </plist>

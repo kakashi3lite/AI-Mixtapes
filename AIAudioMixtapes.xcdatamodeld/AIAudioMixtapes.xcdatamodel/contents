@@ -13,6 +13,6 @@
         <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="title" optional="NO" attributeType="String"/>
         <attribute name="url" optional="YES" attributeType="URI"/>
-        <relationship name="mixtape" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Song" inverseName="songs" inverseEntity="MixTape"/>
+        <relationship name="mixtape" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="MixTape" inverseName="songs" inverseEntity="MixTape"/>
     </entity>
 </model>

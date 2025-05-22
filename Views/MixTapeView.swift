@@ -13,7 +13,14 @@ import AVKit
 /// Enhanced MixTapeView with AI features
 struct MixTapeView: View {
     // Core properties
-    @Environment(\.managedObjectContext) var moc
+    @Environment(\.managedObjectContext) private var viewContext
+    @StateObject private var store = MixTapeStore()
+    
+    @FetchRequest(
+        sortDescriptors: [NSSortDescriptor(keyPath: \MixTape.createdAt, ascending: false)],
+        animation: .default)
+    private var mixtapes: FetchedResults<MixTape>
+    
     @State var songs: [Song]
     @State var mixTape: MixTape
     @Binding var currentMixTapeName: String

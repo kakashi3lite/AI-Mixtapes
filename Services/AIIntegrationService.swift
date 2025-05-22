@@ -14,22 +14,23 @@ import AVKit
 
 /// Central service that coordinates all AI features of the Mixtapes app
 class AIIntegrationService: ObservableObject {
-    // Child services
+    // Existing services
     let moodEngine: MoodEngine
     let personalityEngine: PersonalityEngine
     let recommendationEngine: RecommendationEngine
-    let audioAnalysisService: AudioAnalysisService
+    
+    // New Anthropic service
+    private let anthropicService = AnthropicService.shared
+    private var cancellables = Set<AnyCancellable>()
     
     // Analytics tracking
     private var interactionHistory: [InteractionEvent] = []
-    private var cancellables = Set<AnyCancellable>()
     
     init(context: NSManagedObjectContext) {
         // Initialize child services
         self.moodEngine = MoodEngine()
         self.personalityEngine = PersonalityEngine()
         self.recommendationEngine = RecommendationEngine(context: context)
-        self.audioAnalysisService = AudioAnalysisService()
         
         // Connect services
         setupInterServiceCommunication()
@@ -328,6 +329,86 @@ class AIIntegrationService: ObservableObject {
             audioFeatures.liveness,
             Float(audioFeatures.tempo) / 200.0 // Normalize tempo to 0-1 range
         ]
+    }
+    
+    // MARK: - Anthropic Integration
+    
+    func getWeatherForLocation(_ location: String, completion: @escaping (Result<String, Error>) -> Void) {
+        anthropicService.processWeatherRequest(location: location)
+            .sink(
+                receiveCompletion: { result in
+                    if case .failure(let error) = result {
+                        completion(.failure(error))
+                    }
+                },
+                receiveValue: { response in
+                    completion(.success(response))
+                }
+            )
+            .store(in: &cancellables)
+    }
+    
+    // Enhanced mood detection with Anthropic AI
+    func enhanceMoodDetection(audioFeatures: AudioFeatures) {
+        let prompt = """
+        Analyze these audio features for mood detection:
+        - Tempo: \(audioFeatures.tempo)
+        - Energy: \(audioFeatures.energy)
+        - Valence: \(audioFeatures.valence)
+        - Danceability: \(audioFeatures.danceability)
+        
+        What mood would you associate with this music?
+        """
+        
+        anthropicService.sendMessage(content: prompt)
+            .sink(
+                receiveCompletion: { [weak self] result in
+                    if case .failure(let error) = result {
+                        self?.errorHandler.handle(error)
+                    }
+                },
+                receiveValue: { [weak self] response in
+                    guard let self = self else { return }
+                    if let moodString = try? JSONDecoder().decode([String: String].self, from: response)["content"],
+                       let detectedMood = Mood(rawValue: moodString) {
+                        self.moodEngine.updateMoodWithDetection(mood: detectedMood, confidence: 0.85)
+                    }
+                }
+            )
+            .store(in: &cancellables)
+    }
+    
+    // AI-powered playlist recommendations
+    func getAIPlaylistSuggestions(currentMood: Mood, completion: @escaping ([MixTape]) -> Void) {
+        let prompt = """
+        Given the current mood '\(currentMood.rawValue)', suggest a playlist that would:
+        1. Maintain this mood if positive
+        2. Gradually shift to a more positive mood if negative
+        3. Consider the user's listening history and preferences
+        """
+        
+        anthropicService.sendMessage(content: prompt)
+            .sink(
+                receiveCompletion: { [weak self] result in
+                    if case .failure(let error) = result {
+                        self?.errorHandler.handle(error)
+                    }
+                },
+                receiveValue: { [weak self] response in
+                    guard let self = self else { return }
+                    // Process AI suggestions and convert to mixtapes
+                    let suggestions = self.processAISuggestions(response)
+                    completion(suggestions)
+                }
+            )
+            .store(in: &cancellables)
+    }
+    
+    // Helper to process AI playlist suggestions
+    private func processAISuggestions(_ response: Data) -> [MixTape] {
+        // Implementation to convert AI response to MixTape objects
+        // This would parse the AI suggestions and create mixtape recommendations
+        return []
     }
 }
 

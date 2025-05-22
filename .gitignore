@@ -3,6 +3,10 @@
 .env.local
 .env.*
 
+# IDE
+.vscode/
+.idea/
+
 # Xcode
 *.xcodeproj/*
 !*.xcodeproj/project.pbxproj

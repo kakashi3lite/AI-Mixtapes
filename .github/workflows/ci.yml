@@ -39,6 +39,7 @@ jobs:
       - name: Run Tests
         env:
           destination: ${{ matrix.destination }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           xcodebuild test \
             -project AI-Mixtapes.xcodeproj \

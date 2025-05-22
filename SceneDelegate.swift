@@ -11,6 +11,7 @@ import SwiftUI
 import AVKit
 import MediaPlayer
 import Intents
+import CoreData
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 

@@ -7,6 +7,7 @@ AI-powered music playlist generator with mood detection and personality analysis
 [![codecov](https://codecov.io/gh/username/AI-Mixtapes/branch/main/graph/badge.svg)](https://codecov.io/gh/username/AI-Mixtapes)
 [![Swift Version](https://img.shields.io/badge/swift-5.5-orange.svg)](https://swift.org)
 [![Platform](https://img.shields.io/badge/platform-iOS%2015.0%2B%20%7C%20macOS%2012.0%2B-blue.svg)](https://developer.apple.com)
+AI-Mixtapes is a modular Swift framework that combines mood detection, personality profiling, and audio analysis. You can embed it in iOS or macOS apps or use it from the command line.
 
 ## Features
 
@@ -86,10 +87,13 @@ let features = try await AudioAnalysisService.shared.analyzeAudio(
     from: audioURL
 )
 ```
+### Run the Example App
+1. Clone the repository
+2. Open `AI-Mixtapes.xcodeproj` in Xcode
+3. Select an iOS or macOS simulator
+4. Press **Run** to launch the demo.
 
 ## Documentation
-
-- [API Reference](https://username.github.io/AI-Mixtapes/documentation/aimixtapes/)
 - [Getting Started Guide](docs/getting-started.md)
 - [Architecture Overview](docs/architecture.md)
 - [Contributing Guidelines](CONTRIBUTING.md)

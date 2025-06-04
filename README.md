@@ -86,6 +86,10 @@ AI-Mixtapes/
 └── docs/           # Documentation
 ```
 
+## Modular Architecture
+The project uses several Swift packages located in the `Modules/` directory. These packages isolate functionality like networking, Core Data, and Siri integration so the main app target remains lightweight.
+
+
 ## Development
 
 1. Clone the repository

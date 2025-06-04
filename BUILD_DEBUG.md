@@ -175,3 +175,4 @@ Run performance tests:
    - Monitor background task completion
    - Check task cancellation handling
    - Verify state restoration
+

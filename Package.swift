@@ -59,6 +59,7 @@ let package = Package(
                 .product(name: "SoundpipeAudioKit", package: "SoundpipeAudioKit")
             ],
             path: "Sources/App",
+            exclude: ["Config/BuildSettings.xcconfig"],
             resources: [
                 .process("Resources/Assets.xcassets"),
                 .process("Resources/LaunchScreen.storyboard"),

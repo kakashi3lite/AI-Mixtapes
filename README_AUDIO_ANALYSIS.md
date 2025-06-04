@@ -6,6 +6,8 @@ This module enhances the audio analysis capabilities of the AI-Mixtapes applicat
 
 The enhanced Audio Analysis module provides detailed audio feature extraction with advanced spectral analysis, efficient memory management, and improved performance monitoring.
 
+**Platform Requirements:** macOS 11.0 or later (due to AudioKit dependency) and iOS 15.0 or later.
+
 ## Key Components
 
 ### 1. AudioAnalysisService

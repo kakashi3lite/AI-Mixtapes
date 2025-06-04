@@ -4,19 +4,19 @@
 
 ```
 AI-Mixtapes/
-├── AppDelegate.swift          # App initialization and Core Data setup
-├── SceneDelegate.swift        # UI scene management
-├── ContentView.swift          # Main SwiftUI view
-├── Info.plist                 # App configuration
-├── project.yml               # XcodeGen project configuration
-├── AI_Mixtapes.xcdatamodeld  # Core Data model
-├── LaunchScreen.storyboard   # App launch screen
-├── Models/                   # Data models
-├── Services/                 # Business logic and services
-├── Views/                    # UI components
-├── ViewModels/              # View state management
-├── utils/                    # Utility functions
-└── Tests/                   # Unit and integration tests
+├── Sources/
+│   ├── App/
+│   │   ├── AppDelegate.swift          # App initialization and Core Data setup
+│   │   ├── ContentView.swift          # Main SwiftUI view
+│   │   ├── Models/                    # Data models
+│   │   ├── Services/                  # Business logic and services
+│   │   ├── Views/                     # UI components
+│   │   ├── ViewModels/                # View state management
+│   │   └── Resources/                 # Assets and storyboards
+│   └── Domain/                        # Shared domain models
+├── project.yml                        # XcodeGen project configuration
+├── Info.plist                         # App configuration
+└── Tests/                             # Unit and integration tests
 
 ## Common Build Issues and Solutions
 
@@ -175,3 +175,4 @@ Run performance tests:
    - Monitor background task completion
    - Check task cancellation handling
    - Verify state restoration
+

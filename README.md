@@ -74,9 +74,15 @@ let features = try await AudioAnalysisService.shared.analyzeAudio(
 
 ```
 AI-Mixtapes/
-├── Sources/          # Main source code
-├── Tests/           # Test suite
-├── Resources/       # Project resources
+├── Sources/
+│   ├── App/        # Main application target
+│   │   ├── Models/
+│   │   ├── ViewModels/
+│   │   ├── Views/
+│   │   ├── Services/
+│   │   └── Resources/
+│   └── Domain/     # Shared domain models
+├── Tests/          # Test suite
 └── docs/           # Documentation
 ```
 

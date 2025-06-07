@@ -51,6 +51,9 @@ xed .
 - `Song`: Manages individual song data and audio features
 - `AudioFeatures`: Captures audio analysis results
 
+## US Tree Dashboard Development
+Development of the dashboard used for analyzing tree data occurs in a separate repository. See [README_US_TREE_DASHBOARD.md](README_US_TREE_DASHBOARD.md) for instructions on creating a Python environment and running its tests.
+
 ## Contributing
 
 1. Fork the repository

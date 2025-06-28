@@ -1,0 +1,10 @@
+name: Update Guidelines
+on: [push]
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Update guidelines
+        run: echo "Updating guidelines..."

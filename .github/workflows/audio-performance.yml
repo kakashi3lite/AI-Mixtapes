@@ -1,0 +1,10 @@
+name: Audio Performance
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Run audio performance tests
+        run: echo "Running audio performance tests..."

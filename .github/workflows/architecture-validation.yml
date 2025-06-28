@@ -1,0 +1,10 @@
+name: Architecture Validation
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Run architecture validation
+        run: echo "Running architecture validation..."

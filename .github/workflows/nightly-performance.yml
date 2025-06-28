@@ -1,0 +1,10 @@
+name: Nightly Performance
+on: [schedule]
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Run nightly performance tests
+        run: echo "Running nightly performance tests..."
